@@ -59,10 +59,14 @@ func handler(w http.ResponseWriter, r *http.Request) {
                 return
             }             
             var links []FileLink
+            var pathWithSlash string = r.URL.Path
+            if pathWithSlash[len(pathWithSlash) - 1:] != "/" {
+                pathWithSlash += "/"
+            }
             for _, fileInfo := range fileInfos {
                 link := FileLink{
                     Name: fileInfo.Name(),
-                    Path: r.URL.Path + "/" + fileInfo.Name(),
+                    Path: pathWithSlash + fileInfo.Name(),
                 }
                 links = append(links, link)
             }
