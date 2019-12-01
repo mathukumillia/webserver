@@ -2,9 +2,9 @@ package main
 
 import (
     "context"
-    "encoding/json"
     "log"
     "flag"
+    "html/template"
     "io"
     "io/ioutil"
     "net/http"
@@ -15,8 +15,18 @@ import (
 )
 
 const (
-    indexPath = "./public/index.html"
+    dirListingTmpl = "./public/templates/directory.html"
 )
+
+type FileLink struct {
+    Name string
+    Path string 
+}
+
+type DirPage struct {
+    Title string
+    Links []FileLink
+}
 
 var (
     fileDir string
@@ -33,52 +43,56 @@ func validateArgs() {
 }
 
 func handler(w http.ResponseWriter, r *http.Request) {
-    if r.URL.Path == "/" {
-        file, err := os.Open(indexPath)        
-        if err != nil {
-            log.Printf("error loading index.html: %v", err)
-            w.WriteHeader(http.StatusInternalServerError)
-        } else {
-            w.WriteHeader(http.StatusOK)
-        }
-        io.Copy(w, file)
+    filePath := fileDir + r.URL.Path
+    pathInfo, err := os.Stat(filePath)
+    if err != nil {
+        log.Printf("error accessing path: %s, %v", filePath, err)   
+        w.WriteHeader(http.StatusNotFound)
     } else {
-        filePath := fileDir + r.URL.Path
-        pathInfo, err := os.Stat(filePath)
-        if err != nil {
-            log.Printf("error accessing path: %s, %v", filePath, err)   
-            w.WriteHeader(http.StatusNotFound)
-        } else {
-            switch mode := pathInfo.Mode(); {
-            case mode.IsDir():
-                // Enumerate the files in the directory.
-                fileInfos, err := ioutil.ReadDir(filePath)
-                if err != nil {
-                    log.Printf("error reading directory: %s, %v", filePath, err)
-                    w.WriteHeader(http.StatusInternalServerError)
-                } else {
-                    w.WriteHeader(http.StatusOK)
+        switch mode := pathInfo.Mode(); {
+        case mode.IsDir():
+            // Enumerate the files in the directory.
+            fileInfos, err := ioutil.ReadDir(filePath)
+            if err != nil {
+                log.Printf("error reading directory: %s, %v", filePath, err)
+                w.WriteHeader(http.StatusInternalServerError)
+                return
+            }             
+            var links []FileLink
+            for _, fileInfo := range fileInfos {
+                link := FileLink{
+                    Name: fileInfo.Name(),
+                    Path: r.URL.Path + "/" + fileInfo.Name(),
                 }
-                var names []string
-                for _, fileInfo := range fileInfos {
-                    names = append(names, fileInfo.Name())
-                }
-                // Encode file names in json and send them to the client.
-                enc := json.NewEncoder(w)
-                enc.Encode(names)
-            case mode.IsRegular():
-                // Send file to the client.
-                file, err := os.Open(filePath)
-                if err != nil {
-                    log.Printf("error opening file: %s, %v", filePath, err)
-                    w.WriteHeader(http.StatusInternalServerError)
-                } else {
-                    w.Header().Set("Content-Disposition", "attachment; filename=" + path.Base(filePath))
-                    io.Copy(w, file)
-                }
+                links = append(links, link)
+            }
+            // Generate directory page and send it to the client.
+            data := DirPage {
+                Title: "Rudy's File Server",
+                Links: links,
+            }
+            tmpl, err := template.ParseFiles(dirListingTmpl)
+            if err != nil {
+                log.Printf("Failed loading directory template: %v", err)
+                return
+            }
+            w.WriteHeader(http.StatusOK)
+            err = tmpl.Execute(w, data)
+            if err != nil {
+                log.Printf("Failed executing directory template: %v", err)
+            }
+        case mode.IsRegular():
+            // Send file to the client.
+            file, err := os.Open(filePath)
+            if err != nil {
+                log.Printf("error opening file: %s, %v", filePath, err)
+                w.WriteHeader(http.StatusInternalServerError)
+            } else {
+                w.Header().Set("Content-Disposition", "attachment; filename=" + path.Base(filePath))
+                io.Copy(w, file)
             }
         }
-    } 
+    }
 }
 
 func main() {

@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{.Title}}</title>
+</head>
+<body>
+    <ul>
+        {{range .Links}}
+        <li><a href="{{.Path}}">{{.Name}}</a></li>
+        {{end}}
+    </ul>
+</body>
+</html>
